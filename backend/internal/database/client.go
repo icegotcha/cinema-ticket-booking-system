@@ -12,7 +12,15 @@ import (
 
 func NewClient() (*mongo.Database, error) {
 	mongoURI := os.Getenv("MONGODB_URI")
+	if mongoURI == "" {
+		mongoURI = "mongodb://localhost:27017"
+	}
+
 	databaseName := os.Getenv("MONGODB_DATABASE")
+	if databaseName == "" {
+		databaseName = "booking-system"
+	}
+
 	clientOptions := options.Client().ApplyURI(mongoURI)
 
 	client, err := mongo.Connect(clientOptions)

@@ -5,6 +5,7 @@ go 1.26.5
 require (
 	firebase.google.com/go/v4 v4.21.0
 	github.com/gin-gonic/gin v1.12.0
+	github.com/gorilla/websocket v1.5.3
 	go.mongodb.org/mongo-driver/v2 v2.8.0
 )
 

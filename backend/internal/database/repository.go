@@ -88,7 +88,7 @@ func (r *Repository[T]) FindMany(
 	}
 	defer cursor.Close(ctx)
 
-	var documents []T
+	documents := make([]T, 0)
 
 	if err := cursor.All(ctx, &documents); err != nil {
 		return nil, fmt.Errorf("decode documents: %w", err)

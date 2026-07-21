@@ -1,4 +1,4 @@
-package user
+package movie
 
 import (
 	"github.com/gin-gonic/gin"
@@ -6,7 +6,8 @@ import (
 )
 
 func Register(rg *gin.RouterGroup, db *mongo.Database) {
-	handler := NewHandler()
+	repository := NewMovieRepository(db)
+	service := NewMovieService(repository)
+	handler := NewMovieHandler(service)
 	handler.RegisterRoutes(rg)
-
 }

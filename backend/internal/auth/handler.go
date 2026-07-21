@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -38,7 +39,11 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		case ErrNetworkError:
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
 		default:
-			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			if errors.Is(err, ErrDatabase) {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": ErrDatabase.Error()})
+			} else {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			}
 		}
 		return
 	}
@@ -56,7 +61,11 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 
 	err := h.service.Signup(c.Request.Context(), req)
 	if err != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		if errors.Is(err, ErrEmailAlreadyExists) {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": ErrDatabase.Error()})
+		}
 		return
 	}
 

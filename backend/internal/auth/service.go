@@ -3,9 +3,12 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
+	"time"
 
 	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/firebase"
 	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/user"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 var (
@@ -13,6 +16,7 @@ var (
 	ErrInvalidCredentials = errors.New("invalid email or password")
 	ErrUserNotFound       = errors.New("user not found")
 	ErrNetworkError       = errors.New("network error")
+	ErrDatabase           = errors.New("database error")
 )
 
 type AuthService interface {
@@ -34,30 +38,41 @@ func (s *authService) Login(ctx context.Context, req AuthLoginRequest) (*AuthRes
 		return nil, ErrInvalidCredentials
 	}
 	tokenUID := token.UID
-	user, err := s.repository.FindOne(ctx, user.User{FirebaseUID: tokenUID})
+	foundUser, err := s.repository.FindOne(ctx, bson.M{"firebase_uid": tokenUID})
 
 	if err != nil {
-		return nil, ErrInvalidCredentials
+		return nil, fmt.Errorf("%w: find user: %v", ErrDatabase, err)
+	}
+	if foundUser == nil {
+		return nil, ErrUserNotFound
 	}
 
 	return &AuthResponse{
-		ID:    user.ID,
-		Email: user.Email,
+		ID:    foundUser.ID.Hex(),
+		Email: foundUser.Email,
 	}, nil
 }
 
 func (s *authService) Signup(ctx context.Context, req CreateAuthRequest) error {
+	now := time.Now().UTC()
 	newUser := user.User{
 		FirebaseUID: req.UID,
 		Email:       req.Email,
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
 
-	existing, err := s.repository.FindOne(ctx, user.User{Email: req.Email})
-	if err == nil && existing != nil {
+	existing, err := s.repository.FindOne(ctx, bson.M{"email": req.Email})
+	if err != nil {
+		return fmt.Errorf("%w: check existing user: %v", ErrDatabase, err)
+	}
+	if existing != nil {
 		return ErrEmailAlreadyExists
 	}
 
-	s.repository.Create(ctx, &newUser)
+	if _, err := s.repository.Create(ctx, &newUser); err != nil {
+		return fmt.Errorf("%w: create user: %v", ErrDatabase, err)
+	}
 	return nil
 }
 
