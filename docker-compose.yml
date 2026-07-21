@@ -1,4 +1,38 @@
 services:
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - password
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "password", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:4.3-management
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: password
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - mq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   mongo:
     image: mongo:8
     restart: unless-stopped
@@ -9,6 +43,24 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: password
     volumes:
       - db_data:/data/db
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mongosh",
+          "--quiet",
+          "-u",
+          "root",
+          "-p",
+          "password",
+          "--authenticationDatabase",
+          "admin",
+          "--eval",
+          "db.adminCommand('ping')"
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   mongo-express:
     image: mongo-express:latest
@@ -21,7 +73,8 @@ services:
       ME_CONFIG_MONGODB_ADMINUSERNAME: root
       ME_CONFIG_MONGODB_ADMINPASSWORD: password
     depends_on:
-      - mongo
+      mongo:
+        condition: service_healthy
 
   backend:
     build:
@@ -33,11 +86,19 @@ services:
     environment:
       MONGODB_URI: mongodb://root:password@mongo:27017/?authSource=admin
       MONGODB_DATABASE: booking-system
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: password
+      REDIS_DB: 0
       GOOGLE_APPLICATION_CREDENTIALS: /config/firebase_credentials.json
     volumes:
       - ./backend/config/firebase_credentials.json:/config/firebase_credentials.json:ro
     depends_on:
-      - mongo
+      mongo:
+          condition: service_healthy
+      redis:
+          condition: service_healthy 
+      rabbitmq:
+          condition: service_healthy
 
   frontend:
     build:
@@ -46,8 +107,7 @@ services:
     restart: unless-stopped
     ports:
       - "3000:80"
-    depends_on:
-      - backend
 
 volumes:
   db_data:
+  mq_data:
