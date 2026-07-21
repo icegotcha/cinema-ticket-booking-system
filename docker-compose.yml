@@ -16,7 +16,7 @@ services:
     ports:
       - "8081:8081"
     environment:
-      ME_CONFIG_MONGODB_URL: mongodb://root:password@mongo:27017/
+      ME_CONFIG_MONGODB_URL: mongodb://root:password@mongo:27017/?authSource=admin
       ME_CONFIG_BASICAUTH: false
       ME_CONFIG_MONGODB_ADMINUSERNAME: root
       ME_CONFIG_MONGODB_ADMINPASSWORD: password
@@ -31,11 +31,23 @@ services:
     ports:
       - "8080:8080"
     environment:
-      MONGODB_URI: mongodb://root:password@mongo:27017
+      MONGODB_URI: mongodb://root:password@mongo:27017/?authSource=admin
       MONGODB_DATABASE: booking-system
       GOOGLE_APPLICATION_CREDENTIALS: /config/firebase_credentials.json
+    volumes:
+      - ./backend/config/firebase_credentials.json:/config/firebase_credentials.json:ro
     depends_on:
       - mongo
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: deployment/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
 
 volumes:
   db_data:

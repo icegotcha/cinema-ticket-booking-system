@@ -14,7 +14,7 @@ FROM scratch
 WORKDIR /app
 
 COPY --from=builder /app/server /server
-COPY --from=builder /app/config /app/config
+COPY --from=builder /app/config /config
 
 EXPOSE 8080
 ENTRYPOINT ["/server"]
