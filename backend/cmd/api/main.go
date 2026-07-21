@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/auth"
@@ -16,7 +17,15 @@ func main() {
 	}
 
 	router := gin.Default()
+
 	api := router.Group("/api")
+
+	api.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"status": "ok",
+		})
+	})
+
 	auth.Register(api, db)
 	user.Register(api, db)
 
