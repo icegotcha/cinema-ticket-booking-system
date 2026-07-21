@@ -37,5 +37,15 @@ services:
     depends_on:
       - mongo
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: deployment/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
 volumes:
   db_data:
