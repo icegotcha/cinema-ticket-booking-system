@@ -22,8 +22,6 @@
 
 Before you begin, you'll need to create a firebase project [here](https://console.firebase.google.com/). In the new project, go to the menu: Settings > Service accounts > Firebase Admin  SDK, then generate and downloaded new private key
 
-Next, you'll need to setup this (Github) project
+Next, you'll need to setup and run this (Github) project by:
 
-1. Place the downloaded credentials on the root (or anywhere if you wish eg. `backend/internal/config`) of the backend project
-
-2. Set the correct credentials file name and location including the other environment varriables in `.env` file and place it on the same location in the step 1 (example file: `backend/.env.example`)
+1. Place the downloaded credentials using name:f `firebase_credentials.json`  on `backend/config`

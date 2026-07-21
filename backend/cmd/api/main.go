@@ -7,15 +7,9 @@ import (
 	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/auth"
 	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/database"
 	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/user"
-	"github.com/joho/godotenv"
 )
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatalf("failed to load environment variables: %v", err)
-	}
-
 	db, err := database.NewClient()
 	if err != nil {
 		log.Fatalf("failed to connect to database: %v", err)
