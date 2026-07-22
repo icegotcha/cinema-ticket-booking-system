@@ -6,8 +6,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/auth"
+	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/booking"
 	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/database"
 	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/movie"
+	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/showtime"
 	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/user"
 	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/websocket"
 )
@@ -32,6 +34,8 @@ func main() {
 	auth.Register(api, db)
 	user.Register(api, db)
 	movie.Register(api, db)
+	showtime.Register(api, db)
+	booking.Register(api, db)
 
 	if err := router.Run(":8080"); err != nil {
 		log.Fatalf("failed to start server: %v", err)
