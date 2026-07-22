@@ -4,7 +4,8 @@ export async function apiRequest<T>(path: string, options?: RequestInit): Promis
   const response = await fetch(`${API_BASE_URL}${path}`, options)
 
   if (!response.ok) {
-    throw new Error(`Request failed with status ${response.status}`)
+    const body = (await response.json().catch(() => null)) as { error?: string } | null
+    throw new Error(body?.error ?? `Request failed with status ${response.status}`)
   }
 
   return response.json() as Promise<T>

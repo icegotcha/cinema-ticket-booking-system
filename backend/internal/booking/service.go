@@ -2,10 +2,16 @@ package booking
 
 import (
 	"context"
+	"errors"
+
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
+var ErrSeatUnavailable = errors.New("one or more seats are unavailable")
+
 type BookingService interface {
-	GetBookings(ctx context.Context) ([]BookingResponse, error)
+	GetBookings(ctx context.Context, showtimeID string) ([]BookingResponse, error)
+	CreateBookings(ctx context.Context, request CreateBookingsRequest) (*[]BookingResponse, error)
 }
 
 type bookingService struct {
@@ -18,8 +24,14 @@ func NewBookingService(repository *BookingRepository) BookingService {
 	}
 }
 
-func (s *bookingService) GetBookings(ctx context.Context) ([]BookingResponse, error) {
-	bookings, err := s.repository.FindAll(ctx)
+func (s *bookingService) GetBookings(ctx context.Context, showtimeID string) ([]BookingResponse, error) {
+	var bookings []Booking
+	var err error
+	if showtimeID == "" {
+		bookings, err = s.repository.FindAll(ctx)
+	} else {
+		bookings, err = s.repository.FindByShowtime(ctx, showtimeID)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -28,7 +40,7 @@ func (s *bookingService) GetBookings(ctx context.Context) ([]BookingResponse, er
 
 	for _, b := range bookings {
 		responses = append(responses, BookingResponse{
-			ID:         b.ID,
+			ID:         objectIDString(b.ID),
 			ShowTimeId: b.ShowTimeId,
 			UserId:     b.UserId,
 			SeatNumber: b.SeatNumber,
@@ -36,4 +48,18 @@ func (s *bookingService) GetBookings(ctx context.Context) ([]BookingResponse, er
 	}
 
 	return responses, nil
+}
+
+func (s *bookingService) CreateBookings(
+	ctx context.Context,
+	request CreateBookingsRequest,
+) (*[]BookingResponse, error) {
+	return nil, nil
+}
+
+func objectIDString(id bson.ObjectID) string {
+	if id == bson.NilObjectID {
+		return ""
+	}
+	return id.Hex()
 }

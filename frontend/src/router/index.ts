@@ -14,6 +14,12 @@ const router = createRouter({
       component: () => import('@/views/ShowtimesView.vue'),
       props: true,
     },
+    {
+      path: '/movies/:movieId/showtimes/:showtimeId/seats',
+      name: 'seat-map',
+      component: () => import('@/views/SeatMapView.vue'),
+      props: true,
+    },
   ],
   scrollBehavior: () => ({ top: 0 }),
 })

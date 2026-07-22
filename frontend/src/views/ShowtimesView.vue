@@ -135,14 +135,17 @@ function useFallbackPoster(event: Event) {
         >
           <h2 class="mb-4 font-semibold text-slate-200">{{ dateFormatter.format(group.date) }}</h2>
           <div class="flex flex-wrap gap-3">
-            <button
+            <RouterLink
               v-for="showtime in group.showtimes"
               :key="showtime.id"
+              :to="{
+                name: 'seat-map',
+                params: { movieId, showtimeId: showtime.id },
+              }"
               class="cursor-pointer rounded-lg border border-slate-700 bg-slate-800 px-4 py-2.5 font-semibold text-slate-100 transition-colors hover:border-red-500 hover:bg-red-600 focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:outline-none"
-              type="button"
             >
               {{ timeFormatter.format(showtimeDate(showtime)) }}
-            </button>
+            </RouterLink>
           </div>
         </article>
       </div>
