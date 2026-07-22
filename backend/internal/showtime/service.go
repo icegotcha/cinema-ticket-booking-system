@@ -51,8 +51,9 @@ func (s *showTimeService) GetShowTimes(ctx context.Context, movieID string) ([]S
 			ID:        st.ID.Hex(),
 			StartTime: int64(st.StartTime.T),
 			Movie: movie.MovieResponse{
-				ID:    m.ID.Hex(),
-				Title: fmt.Sprint(m.SeriesTitle),
+				ID:         m.ID.Hex(),
+				Title:      fmt.Sprint(m.SeriesTitle),
+				PosterLink: m.PosterLink,
 			},
 		})
 	}
@@ -93,8 +94,9 @@ func (s *showTimeService) GetShowTimeByID(ctx context.Context, id string) (*Show
 		ID:        respID,
 		StartTime: int64(showtime.StartTime.T),
 		Movie: movie.MovieResponse{
-			ID:    m.ID.Hex(),
-			Title: fmt.Sprint(m.SeriesTitle),
+			ID:         m.ID.Hex(),
+			Title:      fmt.Sprint(m.SeriesTitle),
+			PosterLink: m.PosterLink,
 		},
 	}, nil
 }

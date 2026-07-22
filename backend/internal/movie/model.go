@@ -23,6 +23,7 @@ type Movie struct {
 }
 
 type MovieResponse struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
+	ID         string `json:"id"`
+	Title      string `json:"title"`
+	PosterLink string `json:"poster_link"`
 }

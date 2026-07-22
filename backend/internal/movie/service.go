@@ -36,8 +36,9 @@ func (s *movieService) GetMovies(ctx context.Context) ([]MovieResponse, error) {
 		}
 
 		responses = append(responses, MovieResponse{
-			ID:    id,
-			Title: fmt.Sprint(m.SeriesTitle),
+			ID:         id,
+			Title:      fmt.Sprint(m.SeriesTitle),
+			PosterLink: m.PosterLink,
 		})
 	}
 
@@ -68,7 +69,8 @@ func (s *movieService) GetMovieByID(
 	}
 
 	return &MovieResponse{
-		ID:    respID,
-		Title: fmt.Sprint(m.SeriesTitle),
+		ID:         respID,
+		Title:      fmt.Sprint(m.SeriesTitle),
+		PosterLink: m.PosterLink,
 	}, nil
 }

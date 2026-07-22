@@ -21,6 +21,7 @@ func NewMovieRepository(db *mongo.Database) *MovieRepository {
 
 var movieSummaryProjection = bson.M{
 	"_id":          1,
+	"poster_link":  1,
 	"series_title": 1,
 }
 
