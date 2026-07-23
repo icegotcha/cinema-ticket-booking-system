@@ -15,12 +15,13 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     -o /app/server \
     ./cmd/api
 
-FROM scratch
+FROM alpine:3.23
+
+RUN apk add --no-cache ca-certificates
 
 WORKDIR /app
 
 COPY --from=builder /app/server /server
-COPY --from=builder /app/config /config
 
 EXPOSE 8080
 ENTRYPOINT ["/server"]
