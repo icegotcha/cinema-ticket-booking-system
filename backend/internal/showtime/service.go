@@ -76,7 +76,7 @@ func (s *showTimeService) GetShowTimeByID(ctx context.Context, id string) (*Show
 		return nil, nil
 	}
 
-	m, err := s.movieRepository.FindSummaryByID(ctx, showtime.MovieId)
+	m, err := s.movieRepository.FindSummaryByID(ctx, showtime.MovieID)
 	if err != nil {
 		return nil, fmt.Errorf("get movie by id: %w", err)
 	}

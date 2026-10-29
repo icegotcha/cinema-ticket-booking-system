@@ -90,10 +90,32 @@ services:
       MONGODB_DATABASE: booking-system
     restart: "no"
 
+  worker:
+    build:
+      context: ./backend
+      target: worker
+      dockerfile: deployment/Dockerfile
+    restart: unless-stopped
+    environment:
+      MONGODB_URI: mongodb://root:password@mongo:27017/?authSource=admin
+      MONGODB_DATABASE: booking-system
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: password
+      REDIS_DB: 0
+      RABBITMQ_URL: amqp://admin:password@rabbitmq:5672/
+    depends_on:
+      mongo:
+          condition: service_healthy
+      redis:
+          condition: service_healthy
+      rabbitmq:
+          condition: service_healthy
+
 
   backend:
     build:
       context: ./backend
+      target: api
       dockerfile: deployment/Dockerfile
     restart: unless-stopped
     ports:
@@ -104,6 +126,7 @@ services:
       REDIS_ADDR: redis:6379
       REDIS_PASSWORD: password
       REDIS_DB: 0
+      RABBITMQ_URL: amqp://admin:password@rabbitmq:5672/
       GOOGLE_APPLICATION_CREDENTIALS: /config/firebase_credentials.json
     volumes:
       - ./backend/config/firebase_credentials.json:/config/firebase_credentials.json:ro

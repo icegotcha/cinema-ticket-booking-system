@@ -7,7 +7,7 @@ import (
 
 type ShowTime struct {
 	ID        bson.ObjectID  `json:"id" bson:"_id,omitempty"`
-	MovieId   bson.ObjectID  `json:"movie_id" bson:"movie_id,omitempty"`
+	MovieID   bson.ObjectID  `json:"movie_id" bson:"movie_id,omitempty"`
 	StartTime bson.Timestamp `json:"start_time" bson:"start_time,omitempty"`
 }
 

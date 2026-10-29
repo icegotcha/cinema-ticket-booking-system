@@ -1,23 +1,56 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 
-import { useCreateBookingsMutation, useShowtimeBookingsQuery } from '@/api/bookings'
+import {
+  bookingKeys,
+  type Booking,
+  useConfirmBookingsMutation,
+  useHoldBookingsMutation,
+  useReleaseBookingsMutation,
+  useShowtimeBookingsQuery,
+} from '@/api/bookings'
 import { useShowtimeQuery } from '@/api/showtimes'
+import { useAuth } from '@/composables/useAuth'
+
+import { useQueryClient } from '@tanstack/vue-query'
+import { useWebSocket } from '@vueuse/core'
 
 const props = defineProps<{ movieId: string; showtimeId: string }>()
 const movieId = computed(() => props.movieId)
 const showtimeId = computed(() => props.showtimeId)
 const showtimeQuery = useShowtimeQuery(movieId, showtimeId)
 const bookingsQuery = useShowtimeBookingsQuery(showtimeId)
-const createBookingsMutation = useCreateBookingsMutation()
+const holdBookingsMutation = useHoldBookingsMutation()
+const releaseBookingsMutation = useReleaseBookingsMutation()
+const confirmBookingsMutation = useConfirmBookingsMutation()
+const auth = useAuth()
+
+type SeatEvent = {
+  type: 'SEAT_SNAPSHOT' | 'SEAT_UPDATED'
+  bookings: Array<{
+    id: string
+    seat_number: string
+    seat_status: string
+  }>
+}
 
 const rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 const seatsPerRow = 10
 const selectedSeats = ref(new Set<string>())
+const pendingSeats = ref(new Set<string>())
+const seatActionError = ref('')
 const bookingComplete = ref(false)
+const occupyingStatuses = new Set(['PENDING', 'LOCKED', 'BOOKED'])
+const seatStatuses = computed(() => {
+  const statuses = new Map<string, string>()
+  for (const booking of bookingsQuery.data.value ?? []) {
+    if (occupyingStatuses.has(booking.status)) statuses.set(booking.seat_number, booking.status)
+  }
+  return statuses
+})
 const occupiedSeats = computed(
-  () => new Set((bookingsQuery.data.value ?? []).map((booking) => booking.seat_number)),
+  () => new Set([...seatStatuses.value.keys()].filter((seat) => !selectedSeats.value.has(seat))),
 )
 
 const dateTimeFormatter = new Intl.DateTimeFormat(undefined, {
@@ -28,42 +61,145 @@ const dateTimeFormatter = new Intl.DateTimeFormat(undefined, {
   minute: '2-digit',
 })
 
+const queryClient = useQueryClient()
+
+const protocol = location.protocol === 'https:' ? 'wss' : 'ws'
+const websocketUrl = computed(
+  () => `${protocol}://${location.host}/ws/showtimes/${showtimeId.value}`,
+)
+const { data } = useWebSocket(websocketUrl, {
+  autoReconnect: {
+    retries: 3,
+    delay: 1000,
+  },
+})
+
+watch(data, (rawMessage) => {
+  if (!rawMessage) return
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(rawMessage) as unknown
+  } catch {
+    return
+  }
+
+  if (
+    !parsed ||
+    typeof parsed !== 'object' ||
+    !('type' in parsed) ||
+    (parsed.type !== 'SEAT_SNAPSHOT' && parsed.type !== 'SEAT_UPDATED') ||
+    !('bookings' in parsed) ||
+    !Array.isArray(parsed.bookings)
+  )
+    return
+
+  const event = parsed as SeatEvent
+  const nextSelection = new Set(selectedSeats.value)
+  for (const updated of event.bookings) {
+    if (updated.seat_status === 'AVAILABLE') nextSelection.delete(updated.seat_number)
+  }
+  selectedSeats.value = nextSelection
+
+  queryClient.setQueryData<Booking[]>(bookingKeys.byShowtime(showtimeId.value), (oldBookings) => {
+    const updatedBookings = event.bookings.map((updated) => ({
+      id: updated.id,
+      show_time_id: showtimeId.value,
+      user_id: '',
+      seat_number: updated.seat_number,
+      status: updated.seat_status,
+    }))
+    if (event.type === 'SEAT_SNAPSHOT') return updatedBookings
+
+    const bookings = [...(oldBookings ?? [])]
+    for (const booking of updatedBookings) {
+      const index = bookings.findIndex(
+        (existing) => existing.id === booking.id || existing.seat_number === booking.seat_number,
+      )
+      if (index === -1) {
+        bookings.push(booking)
+      } else {
+        bookings[index] = { ...bookings[index], ...booking }
+      }
+    }
+    return bookings
+  })
+})
+
 const sortedSelectedSeats = computed(() => [...selectedSeats.value].sort())
 
 function seatNumber(row: string, number: number) {
   return `${row}${number}`
 }
 
-function toggleSeat(seat: string) {
+function withSeat(seats: Set<string>, seat: string, included: boolean) {
+  const updated = new Set(seats)
+  if (included) updated.add(seat)
+  else updated.delete(seat)
+  return updated
+}
+
+async function holdSeat(seat: string) {
+  await holdBookingsMutation.mutateAsync({
+    show_time_id: props.showtimeId,
+    seat_numbers: [seat],
+  })
+  selectedSeats.value = withSeat(selectedSeats.value, seat, true)
+}
+
+async function releaseSeat(seat: string) {
+  await releaseBookingsMutation.mutateAsync({
+    show_time_id: props.showtimeId,
+    seat_numbers: [seat],
+  })
+  selectedSeats.value = withSeat(selectedSeats.value, seat, false)
+}
+
+async function toggleSeat(seat: string) {
   if (occupiedSeats.value.has(seat)) return
+  if (pendingSeats.value.has(seat)) return
+  if (!auth.user.value) {
+    auth.openAuth()
+    return
+  }
 
   bookingComplete.value = false
-  createBookingsMutation.reset()
+  seatActionError.value = ''
+  const wasSelected = selectedSeats.value.has(seat)
+  pendingSeats.value = withSeat(pendingSeats.value, seat, true)
 
-  const nextSelection = new Set(selectedSeats.value)
-  if (nextSelection.has(seat)) {
-    nextSelection.delete(seat)
-  } else {
-    nextSelection.add(seat)
+  try {
+    if (wasSelected) await releaseSeat(seat)
+    else await holdSeat(seat)
+  } catch (error) {
+    seatActionError.value = error instanceof Error ? error.message : 'Could not update this seat.'
+    if (wasSelected) selectedSeats.value = withSeat(selectedSeats.value, seat, false)
+    await bookingsQuery.refetch()
+  } finally {
+    pendingSeats.value = withSeat(pendingSeats.value, seat, false)
   }
-  selectedSeats.value = nextSelection
 }
 
 function isSelected(seat: string) {
   return selectedSeats.value.has(seat)
 }
 
-async function createBooking() {
+async function confirmBooking() {
   if (selectedSeats.value.size === 0) return
+  if (!auth.user.value) {
+    auth.openAuth()
+    return
+  }
 
   try {
-    await createBookingsMutation.mutateAsync({
+    await confirmBookingsMutation.mutateAsync({
       show_time_id: props.showtimeId,
       seat_numbers: sortedSelectedSeats.value,
     })
     selectedSeats.value = new Set()
     bookingComplete.value = true
   } catch {
+    selectedSeats.value = new Set()
     await bookingsQuery.refetch()
   }
 }
@@ -89,7 +225,6 @@ function retrySeatMap() {
     >
       Loading seat map…
     </div>
-
     <div
       v-else-if="showtimeQuery.isError.value || bookingsQuery.isError.value"
       class="rounded-2xl border border-slate-800 bg-slate-900/80 px-6 py-14 text-center text-slate-400"
@@ -139,13 +274,20 @@ function retrySeatMap() {
                 :class="[
                   number === 6 ? 'ml-4 sm:ml-7' : '',
                   occupiedSeats.has(seatNumber(row, number))
-                    ? 'cursor-not-allowed border-slate-800 bg-slate-800 text-slate-600'
+                    ? seatStatuses.get(seatNumber(row, number)) === 'LOCKED'
+                      ? 'cursor-not-allowed border-amber-700 bg-amber-950 text-amber-500'
+                      : 'cursor-not-allowed border-slate-800 bg-slate-800 text-slate-600'
                     : isSelected(seatNumber(row, number))
                       ? 'border-red-500 bg-red-600 text-white'
-                      : 'border-slate-600 bg-slate-700 text-slate-200 hover:border-slate-400 hover:bg-slate-600',
+                      : pendingSeats.has(seatNumber(row, number))
+                        ? 'cursor-wait border-amber-500 bg-amber-600 text-white'
+                        : 'border-slate-600 bg-slate-700 text-slate-200 hover:border-slate-400 hover:bg-slate-600',
                 ]"
                 type="button"
-                :disabled="occupiedSeats.has(seatNumber(row, number))"
+                :disabled="
+                  occupiedSeats.has(seatNumber(row, number)) ||
+                  pendingSeats.has(seatNumber(row, number))
+                "
                 :aria-label="`Seat ${seatNumber(row, number)}${occupiedSeats.has(seatNumber(row, number)) ? ', occupied' : ''}`"
                 :aria-pressed="isSelected(seatNumber(row, number))"
                 @click="toggleSeat(seatNumber(row, number))"
@@ -165,7 +307,10 @@ function retrySeatMap() {
             <span class="h-4 w-4 rounded-t-md border border-red-500 bg-red-600" /> Selected
           </div>
           <div class="flex items-center gap-2">
-            <span class="h-4 w-4 rounded-t-md border border-slate-800 bg-slate-800" /> Occupied
+            <span class="h-4 w-4 rounded-t-md border border-amber-700 bg-amber-950" /> Locked
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="h-4 w-4 rounded-t-md border border-slate-800 bg-slate-800" /> Booked
           </div>
         </div>
       </div>
@@ -182,25 +327,28 @@ function retrySeatMap() {
               sortedSelectedSeats.length ? sortedSelectedSeats.join(', ') : 'Choose a seat above'
             }}
           </p>
+          <p v-if="selectedSeats.size" class="mt-1 text-xs text-amber-400">
+            Seats are held for five minutes. Confirm before the hold expires.
+          </p>
           <p v-if="bookingComplete" class="mt-2 text-sm font-medium text-emerald-400" role="status">
             Your seats have been booked successfully.
           </p>
           <p
-            v-else-if="createBookingsMutation.isError.value"
+            v-else-if="seatActionError || confirmBookingsMutation.isError.value"
             class="mt-2 text-sm font-medium text-red-400"
             role="alert"
           >
-            {{ createBookingsMutation.error.value?.message }} Please select available seats and try
-            again.
+            {{ seatActionError || confirmBookingsMutation.error.value?.message }} Please select
+            available seats and try again.
           </p>
         </div>
         <button
           class="rounded-lg bg-red-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-red-500 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
           type="button"
-          :disabled="selectedSeats.size === 0 || createBookingsMutation.isPending.value"
-          @click="createBooking"
+          :disabled="selectedSeats.size === 0 || confirmBookingsMutation.isPending.value"
+          @click="confirmBooking"
         >
-          {{ createBookingsMutation.isPending.value ? 'Booking…' : 'Book seats' }}
+          {{ confirmBookingsMutation.isPending.value ? 'Confirming…' : 'Confirm booking' }}
         </button>
       </footer>
     </template>

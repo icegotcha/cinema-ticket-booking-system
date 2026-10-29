@@ -9,9 +9,11 @@ export interface Booking {
   show_time_id: string
   user_id: string
   seat_number: string
+  status: string
+  expires_at?: string
 }
 
-interface CreateBookingsRequest {
+interface BookingSeatsRequest {
   show_time_id: string
   seat_numbers: string[]
 }
@@ -29,12 +31,49 @@ export function useShowtimeBookingsQuery(showtimeId: MaybeRefOrGetter<string>) {
   })
 }
 
-export function useCreateBookingsMutation() {
+export function useHoldBookingsMutation() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (request: CreateBookingsRequest) =>
-      apiRequest<Booking[]>('/bookings', {
+    mutationFn: (request: BookingSeatsRequest) =>
+      apiRequest<Booking[]>('/bookings/holds', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+      }),
+    onSuccess: (bookings) => {
+      const showtimeId = bookings[0]?.show_time_id
+      if (showtimeId) {
+        void queryClient.invalidateQueries({ queryKey: bookingKeys.byShowtime(showtimeId) })
+      }
+    },
+  })
+}
+
+export function useReleaseBookingsMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (request: BookingSeatsRequest) =>
+      apiRequest<Booking[]>('/bookings/holds', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+      }),
+    onSuccess: (_bookings, request) => {
+      void queryClient.invalidateQueries({
+        queryKey: bookingKeys.byShowtime(request.show_time_id),
+      })
+    },
+  })
+}
+
+export function useConfirmBookingsMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (request: BookingSeatsRequest) =>
+      apiRequest<Booking[]>('/bookings/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request),

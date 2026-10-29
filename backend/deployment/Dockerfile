@@ -6,22 +6,42 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
+
+
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 GOOS=linux \
     go build \
     -trimpath \
     -ldflags="-s -w" \
-    -o /app/server \
+    -o /out/api \
     ./cmd/api
 
-FROM alpine:3.23
+
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    CGO_ENABLED=0 GOOS=linux \
+    go build \
+    -trimpath \
+    -ldflags="-s -w" \
+    -o /out/worker \
+    ./cmd/worker
+
+FROM alpine:3.23 AS api
 
 RUN apk add --no-cache ca-certificates
 
 WORKDIR /app
 
-COPY --from=builder /app/server /server
+COPY --from=builder /out/api /server
 
 EXPOSE 8080
 ENTRYPOINT ["/server"]
+
+FROM alpine:3.23 AS worker
+
+WORKDIR /app
+
+COPY --from=builder /out/worker /worker
+
+ENTRYPOINT ["/worker"]
