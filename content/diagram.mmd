@@ -1,0 +1,23 @@
+architecture-beta
+group backend(server)[Backend]
+
+service frontend(devicon:vuejs)[Frontend]
+
+service auth(devicon:firebase)[Firebase Auth] in backend
+service api(devicon:go)[REST API] in backend
+service audit_worker(devicon:go)[Audit Worker] in backend
+service booking_expire_worker(devicon:go)[Booking Expiration Worker] in backend
+service redis(devicon:redis)[Redis] in backend
+service db(devicon:mongodb)[Database] in backend
+service queue(devicon:rabbitmq)[Queue] in backend
+
+frontend:R --> L:api
+frontend:R --> L:auth
+api:T --> B:auth
+api:B --> T:redis
+api:R --> L:db
+api:R --> L:queue
+queue:R --> L:audit_worker
+audit_worker:B --> T:db
+booking_expire_worker:T --> B:redis
+booking_expire_worker:T --> B:db
