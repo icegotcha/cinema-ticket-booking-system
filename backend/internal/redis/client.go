@@ -1,4 +1,4 @@
-package cache
+package redis
 
 import (
 	"context"
@@ -10,7 +10,6 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// NewRedisClient creates and verifies the Redis connection used by the API.
 func NewRedisClient() (*redis.Client, error) {
 	address := os.Getenv("REDIS_ADDR")
 	if address == "" {

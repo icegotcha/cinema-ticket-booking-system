@@ -7,7 +7,17 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-func NewRabbitMQClient() (*amqp.Channel, error) {
+// Client owns both the AMQP connection and its channel.
+type Client struct {
+	*amqp.Channel
+	connection *amqp.Connection
+}
+
+func (c *Client) Close() error {
+	return c.connection.Close()
+}
+
+func NewRabbitMQClient() (*Client, error) {
 	mqURL := os.Getenv("RABBITMQ_URL")
 	if mqURL == "" {
 		mqURL = "amqp://guest:guest@localhost:5672/"
@@ -19,8 +29,9 @@ func NewRabbitMQClient() (*amqp.Channel, error) {
 
 	channel, err := rabbitMQConn.Channel()
 	if err != nil {
+		_ = rabbitMQConn.Close()
 		return nil, fmt.Errorf("failed to open a channel: %w", err)
 	}
 
-	return channel, nil
+	return &Client{Channel: channel, connection: rabbitMQConn}, nil
 }

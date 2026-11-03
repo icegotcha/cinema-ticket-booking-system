@@ -3,11 +3,9 @@ package booking
 import (
 	"context"
 	"fmt"
-	"log"
-	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/booking/locker"
+	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/locker"
 	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/queue"
 	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/showtime"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -35,19 +33,5 @@ func Register(
 	service := NewBookingService(repository, showtimeRepository, publisher, notifier, seatLocker)
 	handler := NewBookingHandler(service)
 	handler.RegisterRoutes(rg)
-	go expireSeatHolds(service)
 	return nil
-}
-
-func expireSeatHolds(service BookingService) {
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-	for range ticker.C {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		err := service.ExpireBookings(ctx)
-		cancel()
-		if err != nil {
-			log.Printf("expire seat holds: %v", err)
-		}
-	}
 }

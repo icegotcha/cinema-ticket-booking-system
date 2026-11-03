@@ -1,16 +1,18 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/auth"
 	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/booking"
-	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/cache"
 	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/database"
 	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/movie"
+	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/notifier"
 	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/queue"
+	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/redis"
 	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/showtime"
 	websocket_showtime "github.com/icegotcha/cinema-ticket-booking-system/backend/internal/showtime/ws"
 	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/user"
@@ -21,7 +23,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
-	redisClient, err := cache.NewRedisClient()
+	redisClient, err := redis.NewRedisClient()
 	if err != nil {
 		log.Fatalf("failed to connect to Redis: %v", err)
 	}
@@ -44,12 +46,19 @@ func main() {
 	showtimeHub := websocket_showtime.NewHub()
 	websocket_showtime.Register(ws, db, showtimeHub)
 
+	notifierService := notifier.NewNotifierService(redisClient)
+	subscription, err := notifierService.SubscribeExpirationUpdates(context.Background(), showtimeHub)
+	if err != nil {
+		log.Fatalf("initialize expiration updates: %v", err)
+	}
+	defer subscription.Close()
+
 	api := router.Group("/api")
 	auth.Register(api, db)
 	user.Register(api, db)
 	movie.Register(api, db)
 	showtime.Register(api, db)
-	if err := booking.Register(api, db, channel, showtimeHub, redisClient); err != nil {
+	if err := booking.Register(api, db, channel.Channel, showtimeHub, redisClient); err != nil {
 		log.Fatalf("failed to register booking module: %v", err)
 	}
 

@@ -2,11 +2,9 @@ package main
 
 import (
 	"context"
-	"errors"
 	"log"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 
 	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/database"
@@ -14,24 +12,24 @@ import (
 	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/worker"
 )
 
-type Runner interface {
-	Run(ctx context.Context) error
-}
-
 func main() {
 	db, err := database.NewClient()
 	if err != nil {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
 
-	channel, err := queue.NewRabbitMQClient()
+	auditChannel, err := queue.NewRabbitMQClient()
 	if err != nil {
 		log.Fatalf("failed to create RabbitMQ client: %v", err)
 	}
 
-	workers := []Runner{
-		worker.NewBookingSuccessWorker(channel, db),
+	defer auditChannel.Close()
+
+	expirationWorker, cleanupExpiration, err := worker.SetupExpirationWorker(db)
+	if err != nil {
+		log.Fatalf("initialize expiration worker: %v", err)
 	}
+	defer cleanupExpiration()
 
 	ctx, stop := signal.NotifyContext(
 		context.Background(),
@@ -40,29 +38,6 @@ func main() {
 	)
 	defer stop()
 
-	var wg sync.WaitGroup
-	errCh := make(chan error, len(workers))
-
-	for _, w := range workers {
-		wg.Add(1)
-
-		go func(worker Runner) {
-			defer wg.Done()
-
-			if err := worker.Run(ctx); err != nil &&
-				!errors.Is(err, context.Canceled) {
-				errCh <- err
-			}
-		}(w)
-	}
-
-	go func() {
-		wg.Wait()
-		close(errCh)
-	}()
-
-	for err := range errCh {
-		log.Printf("worker stopped with error: %v", err)
-		stop()
-	}
+	auditWorker := worker.NewBookingAuditWorker(auditChannel.Channel, db)
+	worker.RunAll(ctx, auditWorker, expirationWorker)
 }

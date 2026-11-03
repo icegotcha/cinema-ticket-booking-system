@@ -8,6 +8,7 @@ import (
 
 type BookingAuditLog struct {
 	ID         bson.ObjectID `json:"id" bson:"_id,omitempty"`
+	Message    string        `json:"message,omitempty" bson:"message,omitempty"`
 	Event      string        `json:"event" bson:"event"`
 	BookingID  string        `json:"booking_id" bson:"booking_id"`
 	UserID     string        `json:"user_id" bson:"user_id"`

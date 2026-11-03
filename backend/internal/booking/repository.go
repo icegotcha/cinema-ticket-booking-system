@@ -26,6 +26,15 @@ func (r *BookingRepository) FindActiveByShowtime(ctx context.Context, showtimeID
 	})
 }
 
+// HasActiveSeats checks only the requested seats using the active-seat index.
+func (r *BookingRepository) HasActiveSeats(ctx context.Context, showtimeID string, seats []string) (bool, error) {
+	return r.Exists(ctx, bson.M{
+		"show_time_id": showtimeID,
+		"seat_number":  bson.M{"$in": seats},
+		"status":       bson.M{"$in": activeBookingStatuses()},
+	})
+}
+
 func (r *BookingRepository) FindLockedBySeats(
 	ctx context.Context,
 	showtimeID string,
