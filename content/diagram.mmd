@@ -4,9 +4,9 @@ group backend(server)[Backend]
 service frontend(devicon:vuejs)[Frontend]
 
 service auth(devicon:firebase)[Firebase Auth] in backend
-service api(devicon:go)[REST API] in backend
-service audit_worker(devicon:go)[Audit Worker] in backend
-service booking_expire_worker(devicon:go)[Booking Expiration Worker] in backend
+service api(server)[REST API] in backend
+service audit_worker(server)[Audit Worker] in backend
+service booking_expire_worker(server)[Booking Expiration Worker] in backend
 service redis(devicon:redis)[Redis] in backend
 service db(devicon:mongodb)[Database] in backend
 service queue(devicon:rabbitmq)[Queue] in backend
@@ -19,5 +19,6 @@ api:R --> L:db
 api:R --> L:queue
 queue:R --> L:audit_worker
 audit_worker:B --> T:db
-booking_expire_worker:T --> B:redis
-booking_expire_worker:T --> B:db
+booking_expire_worker:L --> R:redis
+booking_expire_worker:R --> L:db
+booking_expire_worker:T --> B:queue

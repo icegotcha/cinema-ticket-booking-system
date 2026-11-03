@@ -50,7 +50,7 @@ const result = await build({
       };
     `,
         resolveDir: root,
-        sourcefile: 'mermaid-renderer.js',
+        sourcefile: 'mermaid-renderer.mjs',
         loader: 'js',
     },
     bundle: true,
