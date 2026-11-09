@@ -89,8 +89,12 @@ async function submitGoogle() {
           Continue with Google
         </button>
 
-        <p v-if="errorMessage" class="mt-4 text-sm text-red-400" role="alert">
-          {{ errorMessage }}
+        <p
+          v-if="errorMessage || auth.authError.value"
+          class="mt-4 text-sm text-red-400"
+          role="alert"
+        >
+          {{ errorMessage || auth.authError.value }}
         </p>
       </section>
     </div>

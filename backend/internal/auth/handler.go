@@ -21,7 +21,6 @@ func (h *AuthHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	authApi := rg.Group("/auth")
 	{
 		authApi.POST("/login", h.Login)
-		authApi.POST("/signup", h.Signup)
 	}
 }
 
@@ -49,25 +48,4 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, resp)
-}
-
-func (h *AuthHandler) Signup(c *gin.Context) {
-	var req CreateAuthRequest
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	err := h.service.Signup(c.Request.Context(), req)
-	if err != nil {
-		if errors.Is(err, ErrEmailAlreadyExists) {
-			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": ErrDatabase.Error()})
-		}
-		return
-	}
-
-	c.JSON(http.StatusCreated, nil)
 }

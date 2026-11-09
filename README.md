@@ -25,7 +25,7 @@ This demo showcases the core features of the cinema ticket booking system, inclu
 - **Expiration Booking Worker** - Background process that handles seat expiration and releases held seats back to availability.
 - **Database** - MongoDB stores persistent data such as user data, movies, showtimes, and bookings.
 - **Redis** - Used for distributed locking and publish/subscribe for expiration updates.
-- **Message Queue** - RabbitMQ handles asynchronous communication between the backend and audit worker for tasks such as logging and seat expiration.
+- **Message Queue** - RabbitMQ carries booking audit events from the API and expiration worker to the audit worker. Seat expiration runs by polling MongoDB, independently of the queue.
 
 ## Project Structure
 
@@ -81,125 +81,160 @@ This demo showcases the core features of the cinema ticket booking system, inclu
 
 ### Login
 
+The login flow ensures that the frontend only considers the user signed in after successful backend authentication. The backend derives the UID and email from the verified Firebase ID token, creating an application profile on first login and reusing it on subsequent logins. A unique Firebase UID index prevents duplicate profiles. Booking ownership relies on the Firebase UID from verified bearer tokens.
+
 ```mermaid
 sequenceDiagram
     participant U as User
     participant F as Frontend
     participant A as Firebase Auth
     participant B as Backend
+    participant M as MongoDB
 
-    U->>F: Click "Login with Google"
-    F->>A: Authenticate with Firebase
-
+    U->>F: Click "Continue with Google"
+    F->>A: Authenticate with Google through Firebase
     alt Authentication fails
-        A->>F: Return error
-    end
-    alt Authentication succeeds
-        A->>F: Return Firebase ID token
-         F->>B: Send Firebase ID token
-         B->>A: Verify token and get user ID
-         alt Token verification fails
-             B->>F: Return error
-         end
-         alt Token verification succeeds
-            B->>F: Return user ID
-         end
+        A-->>F: Return error
+        F-->>U: Show login error
+    else Authentication succeeds
+        A-->>F: Return Firebase user
+        F->>A: Get Firebase ID token
+        A-->>F: Return ID token
+        F->>B: POST /api/auth/login with id_token
+        B->>A: Verify Firebase ID token
+        alt Token verification or Firebase initialization fails
+            B-->>F: Return error (401 or 503)
+            F->>A: Sign out
+            F-->>U: Show login error
+        else Token verification succeeds
+            B->>M: Find or create user by verified Firebase UID
+            alt Database operation fails
+                M-->>B: Return error
+                B-->>F: Return error (500)
+                F->>A: Sign out
+                F-->>U: Show login error
+            else User profile saved
+                M-->>B: Return user profile
+                B-->>F: Return MongoDB user ID and email
+                F-->>U: Show signed-in state
+            end
+        end
     end
 ```
 
+### Booking
 
+Users can browse seat availability without signing in. Selecting a seat requires
+login and immediately creates a hold. clicking **Confirm booking** simulates
+payment success and confirms all currently selected seats.
 
+The diagrams summarize successful operations. The backend verifies a Firebase
+bearer token for every hold, confirmation, and release request. Audit events and
+endpoint details are described in the steps below.
 
-## Booking
-
+#### Select and confirm seats
 
 ```mermaid
 sequenceDiagram
-    participant U as User
     participant F as Frontend
-    participant A as Auth
     participant B as Backend
     participant R as Redis
     participant M as MongoDB
 
-    U->>F: Sign in with Google
-    F->>B: Send Firebase ID token
-    F->>A: Authenticate with Firebase
-    B->>R: Verify token and get user ID
-    B->>M: Check for existing bookings
-    B->>R: Acquire Redis lock for seat
-    B->>M: Insert LOCKED record
-    B->>F: Broadcast seat update
+    F->>B: Open showtime
+    B->>M: Load active bookings
+    B-->>F: Seat availability + WebSocket updates
+
+    F->>B: Select seat
+    Note over B: Verify token and validate showtime
+    B->>R: Lock seat for 5 minutes
+    B->>M: Check availability and save LOCKED hold
+    B-->>F: Show held seat
+
+    F->>B: Confirm selected seats (mock payment)
+    B->>M: Find user's holds and check expiry
+    B->>R: Verify lock ownership
+    B->>M: Change LOCKED to BOOKED
+    B->>R: Release owned locks
+    B-->>F: Booking confirmed + seat updates
 ```
 
+### Seat status and hold release
 
-1. **Sign in.** The user signs in with Google through Firebase Auth. Seat-hold,
-   confirmation, and release requests send the Firebase ID token as
-   `Authorization: Bearer <token>`. The backend verifies the token and takes the
-   booking owner from its Firebase UID, rather than trusting a user ID in the request.
+```mermaid
+flowchart TD
+    A[AVAILABLE] -->|Select seat: create hold| L[LOCKED]
+    L -->|Confirm before expiry| B[BOOKED]
+    L -->|Deselect seat| C[CANCELED]
+    L -->|Worker detects expired hold| E[EXPIRED]
+    C --> V[Seat available again]
+    E --> V
+```
 
-2. **Open a showtime.** The frontend loads its bookings with
-   `GET /api/bookings?show_time_id=<id>` and connects to
-   `/ws/showtimes/<id>`. The WebSocket sends an initial seat snapshot and subsequent
-   updates. Seats appear as `AVAILABLE`, `LOCKED`, or `BOOKED`.
+`CANCELED` and `EXPIRED` are stored booking statuses. Both appear as `AVAILABLE`
+on the seat map. Deselecting releases the Redis lock immediately. For expiration,
+Redis removes the lock automatically, and the worker updates MongoDB and notifies
+browsers through Redis Pub/Sub and WebSocket.
 
-3. **Select a seat.** The frontend calls `POST /api/bookings/holds` with
-   `show_time_id` and `seat_numbers`. The backend validates the seat numbers and
-   checks that the showtime exists and has not started. It acquires a Redis lock
-   for each seat using `SET NX` with a unique ownership token and a five-minute TTL.
-   If any lock cannot be acquired, locks already acquired by that request are
-   released and the request fails. Seat contention returns HTTP `409 Conflict`.
+1. **Sign in.** Use Google through Firebase Auth. The backend verifies bearer
+   tokens and uses the Firebase UID as the booking owner.
 
-4. **Save the hold.** After acquiring Redis locks, the backend checks MongoDB for
-   existing active bookings and inserts `LOCKED` records with their ownership token
-   and expiration time. A unique partial index on showtime and seat prevents
-   multiple active bookings for the same seat. If persistence fails, the backend
-   attempts to remove partial inserts and releases the request's Redis locks.
-   Successful holds are broadcast through the API's WebSocket hub.
+2. **Open a showtime.** Load active bookings and connect to WebSocket for live
+   seat availability.
 
-5. **Confirm the booking.** The frontend calls `POST /api/bookings/confirm` with
-   the showtime and selected seats. This is the mock payment-success action; there
-   is no payment gateway. The backend checks that the user owns every requested
-   hold, that the holds have not expired, and that their Redis tokens still match.
-   It conditionally changes each MongoDB record from `LOCKED` to `BOOKED`, clears
-   its hold metadata, broadcasts the update, publishes `BOOKING_SUCCESS` to
-   RabbitMQ, and releases the Redis lock. The MongoDB booking continues to prevent
-   another user from booking that seat after the Redis key is removed.
+3. **Select a seat.** `POST /api/bookings/holds` validates the seat and showtime,
+   then acquires a five-minute Redis lock. Unavailable seats return `409 Conflict`.
 
-6. **Release a selected seat.** Deselecting a seat calls
-   `DELETE /api/bookings/holds` with the same request fields. The backend checks
-   ownership, conditionally changes `LOCKED` to `CANCELED`, clears hold metadata,
-   broadcasts `AVAILABLE`, publishes `SEAT_RELEASED`, and releases the Redis lock.
-   This endpoint releases holds; it does not cancel confirmed bookings.
+4. **Save the hold.** Store a `LOCKED` booking in MongoDB and broadcast the update.
+   If saving fails, attempt to clean up partial inserts and release the locks.
 
-7. **Expire an unpaid hold.** Redis automatically expires its lock after five
-   minutes. The expiration worker checks MongoDB immediately at startup and then
-   every second by default. It conditionally changes overdue `LOCKED` records to
-   `EXPIRED`, clears hold metadata, and publishes `BOOKING_TIMEOUT` and
-   `SEAT_RELEASED` audit events. Redis Pub/Sub forwards the seat update to API
-   WebSocket hubs so connected browsers see `AVAILABLE`. A seat can remain
-   unavailable briefly after Redis expiry until the worker updates MongoDB.
+5. **Confirm the booking.** `POST /api/bookings/confirm` simulates payment success.
+   Verify hold ownership and expiry, change `LOCKED` to `BOOKED`, release Redis
+   locks, and publish seat updates and audit events.
 
-8. **Record audit events.** The audit worker consumes the `booking.audit` RabbitMQ
-   queue and stores events in MongoDB's `booking_audit_logs` collection. Lock
-   acquisition failures and instrumented persistence/lock errors also publish
-   `SYSTEM_ERROR`. See the worker section below for delivery and retry limitations.
+6. **Release a seat.** `DELETE /api/bookings/holds` changes the user's hold to
+   `CANCELED`, releases its lock, and makes the seat available again.
+
+7. **Expire a hold.** Redis locks expire after five minutes. The worker marks
+   overdue holds as `EXPIRED` and broadcasts availability updates.
+
+8. **Record audit events.** The audit worker consumes RabbitMQ events and saves
+   them to MongoDB's `booking_audit_logs` collection.
 
 ### Redis Lock Strategy
 
 Each Redis key is scoped to a showtime and seat:
-`seat-lock:<showtime_id>:<seat_number>`. `SET NX` lets only one request acquire an
-existing seat lock, while the TTL bounds abandoned holds. A random token identifies
-its owner. Lua scripts check ownership and delete keys only when the token matches,
+`seat-lock:<showtime_id>:<seat_number>`. `SET NX` lets only one request acquire a
+seat lock when its key does not exist, while the TTL bounds abandoned holds. A
+random token identifies its owner. Lua scripts check ownership and delete keys only when the token matches,
 so an old request cannot remove a newer user's lock. Multi-seat requests acquire
 locks in sorted order and release acquired locks if any acquisition fails.
 
-MongoDB is the persistent booking record; Redis coordinates temporary ownership.
+MongoDB is the persistent booking record. Redis coordinates temporary ownership.
 The unique active-seat index provides an additional guard against double booking.
 Confirmation, release, and expiration use conditional MongoDB status updates so
 competing operations cannot both transition the same hold successfully.
 Multi-seat confirmation updates records individually, so an error can leave part
-of a selection confirmed; the operation is not an atomic transaction across seats.
+of a selection confirmed. The operation is not an atomic transaction across seats.
+
+
+### Worker Delivery Notes
+
+The expiration worker polls MongoDB rather than listening for Redis key-expiry
+notifications. Its default interval is one second and can be changed with
+`BOOKING_EXPIRATION_INTERVAL` 
+
+The audit worker consumes `booking.audit` and the legacy `booking.success` queue.
+The publisher uses durable queues, persistent messages, and publisher confirms.
+The worker acknowledges messages after inserting the audit log, requeues messages
+when insertion fails, and rejects malformed or unknown events without requeueing.
+There is no retry limit, backoff, or audit deduplication, so redelivery can create
+duplicate logs. Publishing failures are logged without rolling back the booking.
+There is no outbox or application retry to recover a missing audit event.
+
+Hold, confirmation, and release updates go directly to the current API process's
+WebSocket hub. Only expiration updates use Redis Pub/Sub to reach API processes.
+Pub/Sub updates are not persisted or replayed after a disconnect.
 
 
 ## Setup
@@ -227,7 +262,9 @@ Create a project in the [Firebase Console](https://console.firebase.google.com/)
    - Open **Authentication**, select **Get started**, and go to **Sign-in method**.
    - Enable **Google**, select a project support email, and save.
 
-4. Build and start the services. Docker Compose mounts the root `config` directory and each application service copies it into its own `/config` directory before startup:
+4. Build and start the services. Docker Compose mounts
+   `backend/config/firebase_credentials.json` read-only into the backend at
+   `/config/firebase_credentials.json`, referenced by `GOOGLE_APPLICATION_CREDENTIALS`:
 
    ```sh
    docker compose up --build
