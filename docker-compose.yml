@@ -34,7 +34,7 @@ services:
       retries: 5
 
   mongo:
-    image: mongo:8
+    image: mongo:9
     restart: unless-stopped
     ports:
       - "27017:27017"
@@ -44,23 +44,16 @@ services:
     volumes:
       - db_data:/data/db
     healthcheck:
-      test:
-        [
-          "CMD",
-          "mongosh",
-          "--quiet",
-          "-u",
-          "root",
-          "-p",
-          "password",
-          "--authenticationDatabase",
-          "admin",
-          "--eval",
-          "db.adminCommand('ping')"
-        ]
-      interval: 5s
-      timeout: 3s
-      retries: 5
+      test: >-
+        mongosh --quiet
+        --username "$$MONGO_INITDB_ROOT_USERNAME"
+        --password "$$MONGO_INITDB_ROOT_PASSWORD"
+        --authenticationDatabase admin
+        --eval 'db.adminCommand({ ping: 1 })'
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   mongo-express:
     image: mongo-express:latest
@@ -77,7 +70,7 @@ services:
         condition: service_healthy
   
   seed:
-    image: mongo:8
+    image: mongo:9
     container_name: mongo-seed
     depends_on:
       mongo:
