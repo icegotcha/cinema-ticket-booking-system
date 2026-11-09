@@ -1,0 +1,144 @@
+services:
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - password
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "password", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:4.3-management
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: password
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - mq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongo:
+    image: mongo:9
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: password
+    volumes:
+      - db_data:/data/db
+    healthcheck:
+      test: >-
+        mongosh --quiet
+        --username "$$MONGO_INITDB_ROOT_USERNAME"
+        --password "$$MONGO_INITDB_ROOT_PASSWORD"
+        --authenticationDatabase admin
+        --eval 'db.adminCommand({ ping: 1 })'
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  mongo-express:
+    image: mongo-express:latest
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://root:password@mongo:27017/?authSource=admin
+      ME_CONFIG_BASICAUTH: false
+      ME_CONFIG_MONGODB_ADMINUSERNAME: root
+      ME_CONFIG_MONGODB_ADMINPASSWORD: password
+    depends_on:
+      mongo:
+        condition: service_healthy
+  
+  seed:
+    image: mongo:9
+    container_name: mongo-seed
+    depends_on:
+      mongo:
+        condition: service_healthy
+    volumes:
+      - ./backend/scripts:/scripts:ro
+    entrypoint: ["/bin/sh", "/scripts/db_seed.sh"]
+    environment:
+      MONGODB_URI: mongodb://root:password@mongo:27017/?authSource=admin
+      MONGODB_DATABASE: booking-system
+    restart: "no"
+
+  worker:
+    build:
+      context: ./backend
+      target: worker
+      dockerfile: deployment/Dockerfile
+    restart: unless-stopped
+    environment:
+      MONGODB_URI: mongodb://root:password@mongo:27017/?authSource=admin
+      MONGODB_DATABASE: booking-system
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: password
+      REDIS_DB: 0
+      RABBITMQ_URL: amqp://admin:password@rabbitmq:5672/
+    depends_on:
+      mongo:
+          condition: service_healthy
+      redis:
+          condition: service_healthy
+      rabbitmq:
+          condition: service_healthy
+
+
+  backend:
+    build:
+      context: ./backend
+      target: api
+      dockerfile: deployment/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      MONGODB_URI: mongodb://root:password@mongo:27017/?authSource=admin
+      MONGODB_DATABASE: booking-system
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: password
+      REDIS_DB: 0
+      RABBITMQ_URL: amqp://admin:password@rabbitmq:5672/
+      GOOGLE_APPLICATION_CREDENTIALS: /config/firebase_credentials.json
+    volumes:
+      - ./backend/config/firebase_credentials.json:/config/firebase_credentials.json:ro
+    depends_on:
+      mongo:
+          condition: service_healthy
+      redis:
+          condition: service_healthy 
+      rabbitmq:
+          condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: deployment/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+
+volumes:
+  db_data:
+  mq_data:
