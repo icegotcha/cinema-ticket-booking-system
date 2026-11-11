@@ -9,6 +9,7 @@ func NewHandler() *UserHandler {
 }
 
 func (h *UserHandler) RegisterRoutes(rg *gin.RouterGroup) {
-	rg.Group("/users")
+	api := rg.Group("/users")
+	api.Use(CheckAuth())
 
 }

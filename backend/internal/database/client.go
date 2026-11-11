@@ -11,8 +11,17 @@ import (
 )
 
 func NewClient() (*mongo.Database, error) {
+	ctx := context.Background()
 	mongoURI := os.Getenv("MONGODB_URI")
+	if mongoURI == "" {
+		mongoURI = "mongodb://localhost:27017"
+	}
+
 	databaseName := os.Getenv("MONGODB_DATABASE")
+	if databaseName == "" {
+		databaseName = "booking-system"
+	}
+
 	clientOptions := options.Client().ApplyURI(mongoURI)
 
 	client, err := mongo.Connect(clientOptions)
@@ -20,11 +29,11 @@ func NewClient() (*mongo.Database, error) {
 		return nil, fmt.Errorf("connect to mongodb: %w", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	pingCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	if err := client.Ping(ctx, nil); err != nil {
-		_ = client.Disconnect(context.Background())
+	if err := client.Ping(pingCtx, nil); err != nil {
+		_ = client.Disconnect(ctx)
 
 		return nil, fmt.Errorf("ping mongodb: %w", err)
 	}

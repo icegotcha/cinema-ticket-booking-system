@@ -3,21 +3,20 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/firebase"
 	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/user"
 )
 
 var (
-	ErrEmailAlreadyExists = errors.New("email already exists")
-	ErrInvalidCredentials = errors.New("invalid email or password")
-	ErrUserNotFound       = errors.New("user not found")
+	ErrInvalidCredentials = errors.New("invalid or expired Firebase ID token")
 	ErrNetworkError       = errors.New("network error")
+	ErrDatabase           = errors.New("database error")
 )
 
 type AuthService interface {
 	Login(ctx context.Context, req AuthLoginRequest) (*AuthResponse, error)
-	Signup(ctx context.Context, req CreateAuthRequest) error
 }
 
 type authService struct {
@@ -33,32 +32,16 @@ func (s *authService) Login(ctx context.Context, req AuthLoginRequest) (*AuthRes
 	if err != nil {
 		return nil, ErrInvalidCredentials
 	}
-	tokenUID := token.UID
-	user, err := s.repository.FindOne(ctx, user.User{FirebaseUID: tokenUID})
-
+	email, _ := token.Claims["email"].(string)
+	foundUser, err := s.repository.FindOrCreate(ctx, token.UID, email)
 	if err != nil {
-		return nil, ErrInvalidCredentials
+		return nil, fmt.Errorf("%w: sync user: %v", ErrDatabase, err)
 	}
 
 	return &AuthResponse{
-		ID:    user.ID,
-		Email: user.Email,
+		ID:    foundUser.ID.Hex(),
+		Email: foundUser.Email,
 	}, nil
-}
-
-func (s *authService) Signup(ctx context.Context, req CreateAuthRequest) error {
-	newUser := user.User{
-		FirebaseUID: req.UID,
-		Email:       req.Email,
-	}
-
-	existing, err := s.repository.FindOne(ctx, user.User{Email: req.Email})
-	if err == nil && existing != nil {
-		return ErrEmailAlreadyExists
-	}
-
-	s.repository.Create(ctx, &newUser)
-	return nil
 }
 
 func NewService(repository *user.UserRepository) AuthService {

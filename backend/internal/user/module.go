@@ -6,6 +6,7 @@ import (
 )
 
 func Register(rg *gin.RouterGroup, db *mongo.Database) {
-	rg.Use(CheckAuth())
+	handler := NewHandler()
+	handler.RegisterRoutes(rg)
 
 }

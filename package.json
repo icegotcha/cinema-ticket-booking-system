@@ -1,0 +1,19 @@
+{
+  "name": "cinema-ticket-booking-system",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "render-mermaid": "node scripts/mermaid-renderer.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.15.0",
+  "devDependencies": {
+    "@iconify-json/devicon": "^1.2.76",
+    "esbuild": "^0.28.2",
+    "mermaid": "^12.2.0",
+    "playwright": "^1.64.1"
+  }
+}
