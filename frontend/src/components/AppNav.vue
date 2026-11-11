@@ -16,6 +16,9 @@ const auth = useAuth()
         <span class="hidden sm:inline">Tickets</span>
       </RouterLink>
       <div class="flex items-center gap-3">
+        <RouterLink to="/admin" class="px-3 py-2 text-sm text-slate-300 hover:text-white"
+          >Admin</RouterLink
+        >
         <template v-if="auth.user.value">
           <span class="hidden max-w-48 truncate text-sm text-slate-400 sm:block">{{
             auth.user.value.email

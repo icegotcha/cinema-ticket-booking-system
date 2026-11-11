@@ -70,7 +70,9 @@ services:
         condition: service_healthy
   
   seed:
-    image: mongo:9
+    build:
+      context: ./backend
+      dockerfile: deployment/seed.Dockerfile
     container_name: mongo-seed
     depends_on:
       mongo:
