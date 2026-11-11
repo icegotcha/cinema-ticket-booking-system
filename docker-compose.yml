@@ -138,8 +138,6 @@ services:
     restart: unless-stopped
     ports:
       - "3000:80"
-    depends_on:
-      - backend
 
 volumes:
   db_data:
