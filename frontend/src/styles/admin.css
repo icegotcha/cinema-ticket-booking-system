@@ -1,0 +1,41 @@
+.admin input,
+.admin select,
+.admin button {
+  min-height: 44px;
+  border: 1px solid #475569;
+  border-radius: 6px;
+  padding: 9px 12px;
+  background: #0f172a;
+  color: #f1f5f9;
+}
+.admin button {
+  cursor: pointer;
+}
+.admin button:hover {
+  background: #1e293b;
+}
+.admin button.primary {
+  background: #dc2626;
+  border-color: #dc2626;
+  font-weight: 600;
+}
+.admin button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.admin :is(input, select, button):focus-visible {
+  outline: 2px solid #f87171;
+  outline-offset: 3px;
+}
+.admin th,
+.admin td {
+  padding: 16px;
+  border-bottom: 1px solid #1e293b;
+}
+.admin th {
+  font-weight: 500;
+  color: #94a3b8;
+}
+.admin td {
+  font-variant-numeric: tabular-nums;
+}

@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/admin"
 	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/auth"
 	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/booking"
 	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/database"
@@ -56,6 +57,7 @@ func main() {
 
 	api := router.Group("/api")
 	api.GET("/health", healthHandler)
+	admin.Register(api, db)
 	auth.Register(api, db)
 	user.Register(api, db)
 	movie.Register(api, db)

@@ -68,9 +68,11 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
-  
+
   seed:
-    image: mongo:9
+    build:
+      context: ./backend
+      dockerfile: deployment/seed.Dockerfile
     container_name: mongo-seed
     depends_on:
       mongo:
@@ -98,12 +100,11 @@ services:
       RABBITMQ_URL: amqp://admin:password@rabbitmq:5672/
     depends_on:
       mongo:
-          condition: service_healthy
+        condition: service_healthy
       redis:
-          condition: service_healthy
+        condition: service_healthy
       rabbitmq:
-          condition: service_healthy
-
+        condition: service_healthy
 
   backend:
     build:
@@ -125,11 +126,11 @@ services:
       - ./backend/config/firebase_credentials.json:/config/firebase_credentials.json:ro
     depends_on:
       mongo:
-          condition: service_healthy
+        condition: service_healthy
       redis:
-          condition: service_healthy 
+        condition: service_healthy
       rabbitmq:
-          condition: service_healthy
+        condition: service_healthy
 
   frontend:
     build:
