@@ -203,12 +203,42 @@ browsers through Redis Pub/Sub and WebSocket.
 
 ### Redis Lock Strategy
 
+Redis provides a shared place to coordinate temporary seat holds across backend
+instances. A Go mutex protects only one process, so it cannot coordinate requests
+handled by different instances. Redis combines atomic lock acquisition with a
+TTL, letting one customer hold a seat while automatically releasing the lock if
+they leave or the backend crashes. Its in-memory operations suit frequent,
+short-lived holds, without keeping a database transaction open while a customer
+decides or completes payment. MongoDB still stores bookings and enforces the
+persistent constraints; Redis handles temporary ownership.
+
 Each Redis key is scoped to a showtime and seat:
-`seat-lock:<showtime_id>:<seat_number>`. `SET NX` lets only one request acquire a
-seat lock when its key does not exist, while the TTL bounds abandoned holds. A
-random token identifies its owner. Lua scripts check ownership and delete keys only when the token matches,
-so an old request cannot remove a newer user's lock. Multi-seat requests acquire
-locks in sorted order and release acquired locks if any acquisition fails.
+`seat-lock:<showtime_id>:<seat_number>`. The `seat-lock` prefix distinguishes
+these keys from other Redis data, and the colon separators make the parts easy
+to read when debugging. The showtime ID separates reservations for different
+screenings, while the seat number limits contention to one seat within that
+screening. For example, `seat-lock:showtime-123:A1` and
+`seat-lock:showtime-456:A1` can be held independently. Customers selecting A1
+for the same showtime compete for the same key, while customers selecting A2
+can proceed independently. Using only the seat number would block A1 across
+unrelated showtimes; using only the showtime ID would block every seat in that
+showtime. The format identifies the resource being held; the random token stored
+as its value identifies the current owner.
+
+`SET NX` lets only one request acquire a seat lock when its key does not exist,
+while the TTL bounds abandoned holds. Lua scripts check ownership and delete
+keys only when the token matches, so an old request cannot remove a newer user's
+lock. Multi-seat requests acquire locks in sorted order and release acquired
+locks if any acquisition fails.
+
+Lua runs inside Redis, allowing the ownership check and lock deletion to execute
+as one atomic operation. Separate `GET` and `DEL` calls from Go would leave a gap:
+after the token check, the lock could expire and another customer could acquire
+it before the original request deletes the key. The Lua script prevents that
+race by allowing no other Redis commands to run between the check and deletion.
+Go still handles booking requests and invokes the script; Lua handles the logic
+that must run atomically inside Redis. A script call also avoids separate network
+round trips for checking and deleting locks.
 
 MongoDB is the persistent booking record. Redis coordinates temporary ownership.
 The unique active-seat index provides an additional guard against double booking.
