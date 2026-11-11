@@ -36,11 +36,12 @@ func main() {
 
 	router := gin.Default()
 
-	router.GET("/health", func(c *gin.Context) {
+	healthHandler := func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status": "ok",
 		})
-	})
+	}
+	router.GET("/health", healthHandler)
 
 	ws := router.Group("/ws")
 	showtimeHub := websocket_showtime.NewHub()
@@ -54,6 +55,7 @@ func main() {
 	defer subscription.Close()
 
 	api := router.Group("/api")
+	api.GET("/health", healthHandler)
 	auth.Register(api, db)
 	user.Register(api, db)
 	movie.Register(api, db)
