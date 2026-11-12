@@ -28,7 +28,7 @@ type AdminService interface {
 	Login(context.Context, AdminLoginRequest) (*AdminLoginResponse, error)
 	VerifyToken(context.Context, string) (string, error)
 	Logout(context.Context, string) error
-	GetBookings(context.Context) (*AdminBookingsResponse, error)
+	GetBookings(context.Context, AdminBookingsQuery) (*AdminBookingsResponse, error)
 }
 
 type adminAuthRepository interface {
@@ -97,8 +97,11 @@ func (s *adminService) Logout(ctx context.Context, tokenHash string) error {
 	return s.repository.DeleteSession(ctx, tokenHash)
 }
 
-func (s *adminService) GetBookings(ctx context.Context) (*AdminBookingsResponse, error) {
-	bookings, err := s.bookingRepository.FindAll(ctx)
+func (s *adminService) GetBookings(ctx context.Context, query AdminBookingsQuery) (*AdminBookingsResponse, error) {
+	bookings, total, err := s.bookingRepository.FindAdminPage(ctx, booking.AdminPageQuery{
+		Page: query.Page, PageSize: query.PageSize, MovieID: query.MovieID,
+		UserID: query.UserID, DateFrom: query.DateFrom, DateTo: query.DateTo,
+	})
 	if err != nil {
 		return nil, errors.New("Unable to load bookings")
 	}
@@ -110,7 +113,7 @@ func (s *adminService) GetBookings(ctx context.Context) (*AdminBookingsResponse,
 	if err != nil {
 		return nil, errors.New("Unable to load movies")
 	}
-	return &AdminBookingsResponse{Bookings: bookings, Showtimes: showtimes, Movies: movies}, nil
+	return &AdminBookingsResponse{Bookings: bookings, Showtimes: showtimes, Movies: movies, Page: query.Page, PageSize: query.PageSize, Total: total}, nil
 }
 
 func hashToken(token string) string {

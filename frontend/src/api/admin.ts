@@ -1,6 +1,9 @@
 import type { Booking } from './bookings'
 
 export interface AdminBookings {
+  page: number
+  page_size: number
+  total: number
   bookings: Booking[] | null
   showtimes: { id: string; movie_id: string; start_time: { T: number } }[] | null
   movies: { id: string; series_title: string }[] | null
@@ -32,8 +35,8 @@ export async function loginAdmin(username: string, password: string) {
   accessToken = session.access_token
 }
 
-export async function getAdminBookings(): Promise<AdminBookings> {
-  const response = await fetch(`${API_BASE_URL}/admin/bookings`, {
+export async function getAdminBookings(params: URLSearchParams): Promise<AdminBookings> {
+  const response = await fetch(`${API_BASE_URL}/admin/bookings?${params}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
     cache: 'no-store',
   })

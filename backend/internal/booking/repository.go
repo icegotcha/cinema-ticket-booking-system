@@ -3,6 +3,8 @@ package booking
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/icegotcha/cinema-ticket-booking-system/backend/internal/database"
@@ -182,4 +184,71 @@ func NewBookingRepository(db *mongo.Database) *BookingRepository {
 	return &BookingRepository{
 		Repository: database.NewRepository[Booking](db, "bookings"),
 	}
+}
+
+// AdminPageQuery filters the full result set before sorting and pagination.
+type AdminPageQuery struct {
+	Page, PageSize   int
+	MovieID, UserID  string
+	DateFrom, DateTo int64
+}
+
+func (r *BookingRepository) FindAdminPage(ctx context.Context, query AdminPageQuery) ([]Booking, int64, error) {
+	match := bson.M{}
+	if user := strings.TrimSpace(query.UserID); user != "" {
+		match["user_id"] = bson.M{"$regex": regexp.QuoteMeta(user), "$options": "i"}
+	}
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: match}},
+		{{Key: "$lookup", Value: bson.M{
+			"from": "showtimes", "let": bson.M{"showtimeID": "$show_time_id"},
+			"pipeline": bson.A{bson.M{"$match": bson.M{"$expr": bson.M{"$eq": bson.A{bson.M{"$toString": "$_id"}, "$$showtimeID"}}}}},
+			"as":       "showtime",
+		}}},
+		{{Key: "$unwind", Value: bson.M{"path": "$showtime", "preserveNullAndEmptyArrays": true}}},
+	}
+	filters := bson.M{}
+	if query.MovieID != "" {
+		filters["$expr"] = bson.M{"$eq": bson.A{bson.M{"$toString": "$showtime.movie_id"}, query.MovieID}}
+	}
+	if query.DateFrom > 0 || query.DateTo > 0 {
+		bounds := bson.M{}
+		if query.DateFrom > 0 {
+			bounds["$gte"] = bson.Timestamp{T: uint32(query.DateFrom)}
+		}
+		if query.DateTo > 0 {
+			bounds["$lt"] = bson.Timestamp{T: uint32(query.DateTo)}
+		}
+		filters["showtime.start_time"] = bounds
+	}
+	pipeline = append(pipeline,
+		bson.D{{Key: "$match", Value: filters}},
+		bson.D{{Key: "$sort", Value: bson.D{{Key: "showtime.start_time", Value: -1}, {Key: "_id", Value: -1}}}},
+		bson.D{{Key: "$facet", Value: bson.M{
+			"bookings": bson.A{bson.M{"$skip": int64(query.Page-1) * int64(query.PageSize)}, bson.M{"$limit": query.PageSize}},
+			"count":    bson.A{bson.M{"$count": "total"}},
+		}}},
+	)
+	cursor, err := r.Collection().Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, 0, fmt.Errorf("find admin bookings: %w", err)
+	}
+	defer cursor.Close(ctx)
+	var result []struct {
+		Bookings []Booking `bson:"bookings"`
+		Count    []struct {
+			Total int64 `bson:"total"`
+		} `bson:"count"`
+	}
+	if err := cursor.All(ctx, &result); err != nil {
+		return nil, 0, err
+	}
+	if len(result) == 0 {
+		return []Booking{}, 0, nil
+	}
+	var total int64
+	if len(result[0].Count) > 0 {
+		total = result[0].Count[0].Total
+	}
+	return result[0].Bookings, total, nil
 }
