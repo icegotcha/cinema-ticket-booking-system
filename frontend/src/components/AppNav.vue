@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { RouterLink } from 'vue-router'
+import { computed } from 'vue'
+import { RouterLink, useRoute } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 
 const auth = useAuth()
+const route = useRoute()
+const isAdminPage = computed(() => route.meta.isAdminPage === true)
 </script>
 
 <template>
@@ -16,26 +19,34 @@ const auth = useAuth()
         <span class="hidden sm:inline">Tickets</span>
       </RouterLink>
       <div class="flex items-center gap-3">
-        <template v-if="auth.user.value">
-          <span class="hidden max-w-48 truncate text-sm text-slate-400 sm:block">{{
-            auth.user.value.email
-          }}</span>
+        <RouterLink
+          v-if="auth.ready.value && !auth.user.value"
+          to="/admin"
+          class="px-3 py-2 text-sm text-slate-300 hover:text-white"
+          >Admin</RouterLink
+        >
+        <template v-if="!isAdminPage">
+          <template v-if="auth.user.value">
+            <span class="hidden max-w-48 truncate text-sm text-slate-400 sm:block">{{
+              auth.user.value.email
+            }}</span>
+            <button
+              class="cursor-pointer rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 hover:border-slate-500 hover:bg-slate-800"
+              type="button"
+              @click="auth.signOut"
+            >
+              Sign out
+            </button>
+          </template>
           <button
-            class="cursor-pointer rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 hover:border-slate-500 hover:bg-slate-800"
+            v-else-if="auth.ready.value"
+            class="cursor-pointer rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500"
             type="button"
-            @click="auth.signOut"
+            @click="auth.openAuth()"
           >
-            Sign out
+            Sign in
           </button>
         </template>
-        <button
-          v-else
-          class="cursor-pointer rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500"
-          type="button"
-          @click="auth.openAuth()"
-        >
-          Sign in
-        </button>
       </div>
     </div>
   </nav>

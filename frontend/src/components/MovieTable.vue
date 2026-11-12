@@ -10,7 +10,7 @@ const movies = computed(() => data.value ?? [])
 const router = useRouter()
 
 function openShowtimes(movie: Movie) {
-  void router.push({ name: 'movie-showtimes', params: { movieId: movie.id } })
+  void router.push(`/movies/${encodeURIComponent(movie.id)}/showtimes`)
 }
 
 const posterFallback =

@@ -17,6 +17,13 @@ echo "Seeding showtimes..."
 mongosh \
   "$MONGODB_URI" \
   --quiet \
-  --file /scripts/source/showtimes.js
+  --file /scripts/js/showtimes.js
+
+echo "Seeding admin..."
+
+mongosh \
+  "$MONGODB_URI" \
+  --quiet \
+  --file /scripts/js/admin.js
 
 echo "Seed Complete"
