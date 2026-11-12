@@ -13,8 +13,6 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
-const BookingSuccessQueue = "booking.success"
-
 type auditLogWriter interface {
 	Create(context.Context, *booking_auditlog.BookingAuditLog) (bson.ObjectID, error)
 }
@@ -48,10 +46,6 @@ func (w *BookingAuditWorker) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("consume booking audit queue: %w", err)
 	}
-	legacyMessages, err := consume(BookingSuccessQueue)
-	if err != nil {
-		return fmt.Errorf("consume legacy booking success queue: %w", err)
-	}
 
 	log.Println("booking audit worker started")
 
@@ -64,12 +58,6 @@ func (w *BookingAuditWorker) Run(ctx context.Context) error {
 		case message, ok := <-messages:
 			if !ok {
 				return fmt.Errorf("booking audit message channel closed")
-			}
-
-			w.handleMessage(ctx, message)
-		case message, ok := <-legacyMessages:
-			if !ok {
-				return fmt.Errorf("legacy booking success message channel closed")
 			}
 			w.handleMessage(ctx, message)
 		}
@@ -90,10 +78,6 @@ func (w *BookingAuditWorker) handleMessage(
 		}
 
 		return
-	}
-
-	if bookingEvent.Event == "" && message.RoutingKey == BookingSuccessQueue {
-		bookingEvent.Event = event.BookingSuccess
 	}
 	switch bookingEvent.Event {
 	case event.BookingSuccess, event.BookingTimeout, event.SeatReleased, event.SystemError:
