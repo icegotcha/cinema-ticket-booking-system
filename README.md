@@ -17,8 +17,7 @@ This demo showcases the core features of the cinema ticket booking system, inclu
 
 ![](./content/diagram.svg)
 
-
-- **Frontend** - Website represent UI which users can browse movies, view showtimes, and select seats for booking.
+- **Frontend** - Website represent UI which users can browse movies, view showtimes, and select seats for booking. Includes admin page for viewing bookings and managing the system.
 - **Firebase Auth** - Authentication server connected with the frontend for user sign-in and the backend for ID token verification.
 - **Backend** - REST API and Websocket servers to perform requests to create tickets and reserve seats for users
 - **Audit Worker** - Background process that handles audit logging.
@@ -26,56 +25,6 @@ This demo showcases the core features of the cinema ticket booking system, inclu
 - **Database** - MongoDB stores persistent data such as user data, movies, showtimes, and bookings.
 - **Redis** - Used for distributed locking and publish/subscribe for expiration updates.
 - **Message Queue** - RabbitMQ carries booking audit events from the API and expiration worker to the audit worker. Seat expiration runs by polling MongoDB, independently of the queue.
-
-## Project Structure
-
-- `backend/`
-  - `cmd/`
-    - `api/`: HTTP API and WebSocket server entrypoint.
-    - `worker/`: Worker entrypoint.
-  - `config/`: Configuration files and setup.
-  - `internal/`
-    - `database/`: Database connection and shared repository.
-    - `firebase/`: Firebase Admin client setup.
-    - `redis/`: Redis connection setup.
-    - `event/`: Queue event types and constants.
-    - `auditlog/`: Audit log models and repository.
-    - `movie/`: Movie listing and details.
-    - `showtime/`: Showtime listing and details.
-      - `ws/`: Seat snapshots and WebSocket updates.
-    - `auth/`: Login and user registration.
-    - `booking/`: Seat holds, confirmation, release, and expiration.
-    - `locker/`: Seat locks and ownership checks.
-    - `notifier/`: Pub/Sub bridge for expiration updates.
-    - `queue/`: RabbitMQ connection and event publishing.
-    - `user/`: User persistence and authentication middleware.
-    - `worker/`: Audit consumer, expiration loop, worker setup and runner.
-  - `deployment/`: API and worker container builds.
-  - `scripts/`: Database seed script.
-    - `source/`: Movie and showtime seed data.
-  - `go.mod`: Go dependencies.
-- `frontend/`
-  - `src/`
-    - `api/`: HTTP client and API query/mutation functions.
-    - `components/`: Shared Vue components.
-    - `composables/`: Shared authentication state and actions.
-    - `router/`: Vue Router configuration.
-    - `views/`: Page components for different routes.
-    - `styles/`: Shared styles.
-    - `firebase.ts`: Firebase browser client setup.
-    - `App.vue`: Application root.
-    - `main.ts`: Vue application entrypoint.
-  - `public/`: Static public assets.
-  - `deployment/`: Frontend Dockerfile and Nginx configuration.
-  - `.env`: Environment variables for the frontend.
-  - `package.json`: Frontend dependencies and scripts.
-- `content/`: Static files for README.
-- `scripts/`: Scripts for generating the static content or global assets.
-- Root files
-  - `docker-compose.yml`: Local services and application containers.
-  - `README.md`: Project documentation.
-  - `package.json`: Project dependencies and scripts (Currently using for generating static content).
-
 
 ## Flow & Strategy
 
@@ -201,71 +150,42 @@ browsers through Redis Pub/Sub and WebSocket.
 8. **Record audit events.** The audit worker consumes RabbitMQ events and saves
    them to MongoDB's `booking_audit_logs` collection.
 
-### Redis Lock Strategy
+### Lock Strategy
 
-Redis provides a shared place to coordinate temporary seat holds across backend
-instances. A Go mutex protects only one process, so it cannot coordinate requests
-handled by different instances. Redis combines atomic lock acquisition with a
-TTL, letting one customer hold a seat while automatically releasing the lock if
-they leave or the backend crashes. Its in-memory operations suit frequent,
-short-lived holds, without keeping a database transaction open while a customer
-decides or completes payment. MongoDB still stores bookings and enforces the
-persistent constraints; Redis handles temporary ownership.
+- **Tools and rationale:** Redis coordinates temporary seat holds across backend
+  instances, while a Go mutex only protects one process. Its fast, in-memory
+  operations and automatic expiry suit short-lived holds without keeping a
+  database transaction open while customers choose seats or pay.
 
-Each Redis key is scoped to a showtime and seat:
-`seat-lock:<showtime_id>:<seat_number>`. The `seat-lock` prefix distinguishes
-these keys from other Redis data, and the colon separators make the parts easy
-to read when debugging. The showtime ID separates reservations for different
-screenings, while the seat number limits contention to one seat within that
-screening. For example, `seat-lock:showtime-123:A1` and
-`seat-lock:showtime-456:A1` can be held independently. Customers selecting A1
-for the same showtime compete for the same key, while customers selecting A2
-can proceed independently. Using only the seat number would block A1 across
-unrelated showtimes; using only the showtime ID would block every seat in that
-showtime. The format identifies the resource being held; the random token stored
-as its value identifies the current owner.
+- **Lock format:** `seat-lock:<showtime_id>:<seat_number>` identifies one seat in
+  one screening. The prefix separates locks from other Redis data; the showtime
+  and seat IDs prevent unrelated seats or screenings from blocking each other.
+  For example, `seat-lock:showtime-123:A1` and `seat-lock:showtime-456:A1` are
+  independent. A random token stored as the value identifies the lock owner.
 
-`SET NX` lets only one request acquire a seat lock when its key does not exist,
-while the TTL bounds abandoned holds. Lua scripts check ownership and delete
-keys only when the token matches, so an old request cannot remove a newer user's
-lock. Multi-seat requests acquire locks in sorted order and release acquired
-locks if any acquisition fails.
+- **Acquisition and release:** `SET NX` with a TTL acquires a lock atomically and
+  automatically releases abandoned holds. Go invokes Lua inside Redis to check
+  the ownership token and delete the lock atomically. Separate `GET` and `DEL`
+  calls could delete a newer customer's lock if ownership changes between calls;
+  Lua prevents this race and avoids an extra network round trip. Multi-seat
+  requests acquire locks in sorted order and release acquired locks if any
+  acquisition fails.
 
-Lua runs inside Redis, allowing the ownership check and lock deletion to execute
-as one atomic operation. Separate `GET` and `DEL` calls from Go would leave a gap:
-after the token check, the lock could expire and another customer could acquire
-it before the original request deletes the key. The Lua script prevents that
-race by allowing no other Redis commands to run between the check and deletion.
-Go still handles booking requests and invokes the script; Lua handles the logic
-that must run atomically inside Redis. A script call also avoids separate network
-round trips for checking and deleting locks.
-
-MongoDB is the persistent booking record. Redis coordinates temporary ownership.
-The unique active-seat index provides an additional guard against double booking.
-Confirmation, release, and expiration use conditional MongoDB status updates so
-competing operations cannot both transition the same hold successfully.
-Multi-seat confirmation updates records individually, so an error can leave part
-of a selection confirmed. The operation is not an atomic transaction across seats.
-
+- **Persistent protection:** MongoDB stores bookings, with a unique active-seat
+  index to prevent double booking. Conditional status updates protect confirmation,
+  release, and expiration from competing transitions. Multi-seat confirmation
+  updates each booking individually, so it can partially succeed.
 
 ### Worker Delivery Notes
 
-The expiration worker polls MongoDB rather than listening for Redis key-expiry
-notifications. Its default interval is one second and can be changed with
-`BOOKING_EXPIRATION_INTERVAL` 
+- **Expiration:** Polls MongoDB every second (configurable via
+  `BOOKING_EXPIRATION_INTERVAL`), rather than using Redis expiry notifications.
 
-The audit worker consumes `booking.audit` and the legacy `booking.success` queue.
-The publisher uses durable queues, persistent messages, and publisher confirms.
-The worker acknowledges messages after inserting the audit log, requeues messages
-when insertion fails, and rejects malformed or unknown events without requeueing.
-There is no retry limit, backoff, or audit deduplication, so redelivery can create
-duplicate logs. Publishing failures are logged without rolling back the booking.
-There is no outbox or application retry to recover a missing audit event.
-
-Hold, confirmation, and release updates go directly to the current API process's
-WebSocket hub. Only expiration updates use Redis Pub/Sub to reach API processes.
-Pub/Sub updates are not persisted or replayed after a disconnect.
-
+- **Audit:** Consumes `booking.audit` using durable queues, persistent messages,
+  and publisher confirms. Acknowledges after saving, requeues insert failures,
+  and rejects invalid events. No retry limit, backoff, or deduplication;
+  redelivery may duplicate logs. Publish failures are logged without booking
+  rollback, retry, or an outbox, so audit events may be lost.
 
 ## Setup
 
