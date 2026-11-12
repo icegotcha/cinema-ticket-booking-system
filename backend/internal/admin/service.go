@@ -16,7 +16,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const sessionDuration = 8 * time.Hour
+const sessionDuration = time.Hour
 
 var (
 	ErrInvalidCredentials = errors.New("Incorrect username or password")

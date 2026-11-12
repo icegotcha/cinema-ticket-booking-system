@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { hasAdminSession } from '@/api/admin'
+import { hasAdminToken } from '@/api/admin'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -8,12 +8,13 @@ const router = createRouter({
       path: '/admin',
       name: 'admin',
       component: () => import('@/views/AdminView.vue'),
-      meta: { requiresAdmin: true },
+      meta: { requiresAdminSession: true, isAdminPage: true },
     },
     {
       path: '/admin/login',
       name: 'admin-login',
       component: () => import('@/views/AdminLoginView.vue'),
+      meta: { isAdminPage: true },
     },
     {
       path: '/',
@@ -47,8 +48,8 @@ const router = createRouter({
 })
 
 router.beforeEach((to) => {
-  if (to.meta.requiresAdmin && !hasAdminSession()) return { name: 'admin-login' }
-  if (to.name === 'admin-login' && hasAdminSession()) return { name: 'admin' }
+  if (to.meta.requiresAdminSession && !hasAdminToken()) return { name: 'admin-login' }
+  if (to.name === 'admin-login' && hasAdminToken()) return { name: 'admin' }
 })
 
 export default router
