@@ -19,11 +19,9 @@ const router = createRouter({
       path: '/',
       name: 'home',
       component: () => import('@/views/HomeView.vue'),
-      component: () => import('@/views/HomeView.vue'),
     },
     {
       path: '/movies/:movieId/showtimes',
-      name: 'movie-showtimes',
       component: () => import('@/views/ShowtimesView.vue'),
       props: true,
     },
@@ -32,8 +30,9 @@ const router = createRouter({
       name: 'seat-map',
       component: () => import('@/views/SeatMapView.vue'),
       props: true,
+    },
+    {
       path: '/movies/:movieId/showtimes',
-      name: 'movie-showtimes',
       component: () => import('@/views/ShowtimesView.vue'),
       props: true,
     },

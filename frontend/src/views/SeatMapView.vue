@@ -213,7 +213,7 @@ function retrySeatMap() {
 <template>
   <section class="mx-auto w-full max-w-5xl" aria-labelledby="seat-map-heading">
     <RouterLink
-      :to="{ name: 'movie-showtimes', params: { movieId } }"
+      :to="`/movies/${encodeURIComponent(movieId)}/showtimes`"
       class="mb-8 inline-flex items-center gap-2 text-sm font-medium text-slate-400 transition-colors hover:text-white"
     >
       <span aria-hidden="true">←</span> Back to showtimes
