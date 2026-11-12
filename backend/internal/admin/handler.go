@@ -57,7 +57,12 @@ func (h *AdminHandler) Logout(c *gin.Context) {
 }
 
 func (h *AdminHandler) GetBookings(c *gin.Context) {
-	response, err := h.service.GetBookings(c.Request.Context())
+	query := AdminBookingsQuery{Page: 1, PageSize: 25}
+	if err := c.ShouldBindQuery(&query); err != nil || (query.DateTo > 0 && query.DateTo <= query.DateFrom) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid pagination or date range"})
+		return
+	}
+	response, err := h.service.GetBookings(c.Request.Context(), query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

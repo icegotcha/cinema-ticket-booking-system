@@ -30,7 +30,19 @@ type AdminLoginResponse struct {
 	ExpiresAt   time.Time `json:"expires_at"`
 }
 
+type AdminBookingsQuery struct {
+	Page     int    `form:"page" binding:"min=1,max=1000000"`
+	PageSize int    `form:"page_size" binding:"min=1,max=100"`
+	MovieID  string `form:"movie_id"`
+	UserID   string `form:"user_id"`
+	DateFrom int64  `form:"date_from" binding:"min=0,max=4294967295"`
+	DateTo   int64  `form:"date_to" binding:"min=0,max=4294967295"`
+}
+
 type AdminBookingsResponse struct {
+	Page      int                 `json:"page"`
+	PageSize  int                 `json:"page_size"`
+	Total     int64               `json:"total"`
 	Bookings  []booking.Booking   `json:"bookings"`
 	Showtimes []showtime.ShowTime `json:"showtimes"`
 	Movies    []movie.Movie       `json:"movies"`

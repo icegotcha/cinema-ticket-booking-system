@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { hasAdminSession } from '@/api/admin'
+import { hasAdminToken } from '@/api/admin'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -8,22 +8,21 @@ const router = createRouter({
       path: '/admin',
       name: 'admin',
       component: () => import('@/views/AdminView.vue'),
-      meta: { requiresAdmin: true },
+      meta: { requiresAdminSession: true, isAdminPage: true },
     },
     {
       path: '/admin/login',
       name: 'admin-login',
       component: () => import('@/views/AdminLoginView.vue'),
+      meta: { isAdminPage: true },
     },
     {
       path: '/',
       name: 'home',
       component: () => import('@/views/HomeView.vue'),
-      component: () => import('@/views/HomeView.vue'),
     },
     {
       path: '/movies/:movieId/showtimes',
-      name: 'movie-showtimes',
       component: () => import('@/views/ShowtimesView.vue'),
       props: true,
     },
@@ -32,8 +31,9 @@ const router = createRouter({
       name: 'seat-map',
       component: () => import('@/views/SeatMapView.vue'),
       props: true,
+    },
+    {
       path: '/movies/:movieId/showtimes',
-      name: 'movie-showtimes',
       component: () => import('@/views/ShowtimesView.vue'),
       props: true,
     },
@@ -48,8 +48,8 @@ const router = createRouter({
 })
 
 router.beforeEach((to) => {
-  if (to.meta.requiresAdmin && !hasAdminSession()) return { name: 'admin-login' }
-  if (to.name === 'admin-login' && hasAdminSession()) return { name: 'admin' }
+  if (to.meta.requiresAdminSession && !hasAdminToken()) return { name: 'admin-login' }
+  if (to.name === 'admin-login' && hasAdminToken()) return { name: 'admin' }
 })
 
 export default router
